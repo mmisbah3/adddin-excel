@@ -4,24 +4,25 @@ Office.onReady((info) => {
   }
 });
 
-// Konversi karakter Latin ke format miring (Unicode Italic)
+// Konversi HANYA teks alfabet ke karakter miring Unicode
 function toUnicodeItalic(text) {
   return text.split('').map(char => {
     const code = char.charCodeAt(0);
-    // A-Z
+    // Huruf besar A-Z (A=0x1D434)
     if (code >= 65 && code <= 90) {
       return String.fromCodePoint(0x1D434 + (code - 65));
     }
-    // a-z
+    // Huruf kecil a-z (a=0x1D44E)
     if (code >= 97 && code <= 122) {
-      if (char === 'h') return 'ℎ';
+      if (char === 'h') return 'ℎ'; // Pengecualian standar Unicode
       return String.fromCodePoint(0x1D44E + (code - 97));
     }
+    // Angka, spasi, dan simbol tetap standar
     return char;
   }).join('');
 }
 
-// Request terjemahan langsung spesifik ID ke EN
+// Fetch terjemahan ID -> EN
 async function fetchTranslation(text) {
   const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=id|en`;
   const response = await fetch(url);
@@ -36,7 +37,7 @@ async function fetchTranslation(text) {
 async function handleTranslate() {
   const statusDiv = document.getElementById("status");
   statusDiv.className = "";
-  statusDiv.innerText = "Menerjemahkan ke bahasa Inggris...";
+  statusDiv.innerText = "Menerjemahkan...";
 
   const position = document.querySelector('input[name="position"]:checked').value;
 
@@ -55,14 +56,21 @@ async function handleTranslate() {
           const originalText = originalValues[row][col];
 
           if (typeof originalText === "string" && originalText.trim() !== "") {
-            const translatedText = await fetchTranslation(originalText.trim());
-            const formattedTranslation = `(${toUnicodeItalic(translatedText)})`;
+            const rawTranslation = await fetchTranslation(originalText.trim());
+            
+            // 1. Miringkan hanya isi teks terjemahannya saja
+            const italicText = toUnicodeItalic(rawTranslation.trim());
+            
+            // 2. Bungkus teks miring secara eksplisit dengan tanda kurung
+            const bracketedTranslation = `(${italicText})`;
 
             let combinedResult = "";
             if (position === "newline") {
-              combinedResult = `${originalText}\n${formattedTranslation}`;
+              // Posisi Di Bawah (menggunakan line break \n)
+              combinedResult = `${originalText.trim()}\n${bracketedTranslation}`;
             } else {
-              combinedResult = `${originalText} ${formattedTranslation}`;
+              // Posisi Di Samping
+              combinedResult = `${originalText.trim()} ${bracketedTranslation}`;
             }
 
             rowValues.push(combinedResult);
@@ -73,8 +81,10 @@ async function handleTranslate() {
         updatedValues.push(rowValues);
       }
 
+      // Tulis hasil kembali ke sel
       range.values = updatedValues;
       
+      // Aktifkan text wrap otomatis jika memilih posisi Di Bawah
       if (position === "newline") {
         range.format.wrapText = true;
       }
