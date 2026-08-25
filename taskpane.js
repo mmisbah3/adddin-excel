@@ -1,105 +1,108 @@
-Office.onReady((info) => {
-  if (info.host === Office.HostType.Excel) {
-    document.getElementById("translateBtn").onclick = handleTranslate;
-  }
-});
-
-// Konversi karakter alfabet ke format italic Unicode
-function toUnicodeItalic(text) {
-  return text.split('').map(char => {
-    const code = char.charCodeAt(0);
-    // Huruf besar A-Z
-    if (code >= 65 && code <= 90) {
-      return String.fromCodePoint(0x1D434 + (code - 65));
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Excel Translator ID-EN (Solusi 2)</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 16px;
+      margin: 0;
+      background-color: #f8f9fa;
+      color: #333;
     }
-    // Huruf kecil a-z
-    if (code >= 97 && code <= 122) {
-      if (char === 'h') return 'ℎ'; // Karakter planck/italic h standar
-      return String.fromCodePoint(0x1D44E + (code - 97));
+    .badge {
+      display: inline-block;
+      background-color: #e1dfdd;
+      color: #107c41;
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 12px;
     }
-    return char;
-  }).join('');
-}
-
-// Membungkus teks italic dengan tanda kurung yang dilindungi LTR Mark (\u200E)
-// Mencegah Excel mengubah arah perataan dan posisi tanda kurung saat berpindah sel
-function wrapWithSafeParentheses(text) {
-  const LTR = "\u200E"; // Left-to-Right Directional Mark
-  return `${LTR}(${text})${LTR}`;
-}
-
-// Request terjemahan langsung spesifik ID ke EN
-async function fetchTranslation(text) {
-  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=id|en`;
-  const response = await fetch(url);
-  const data = await response.json();
+    h2 {
+      font-size: 16px;
+      margin: 0 0 12px 0;
+      color: #107c41;
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .radio-group {
+      background: #fff;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .radio-option {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .radio-option:last-child {
+      margin-bottom: 0;
+    }
+    .radio-option input {
+      margin-right: 8px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #107c41;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    button:hover {
+      background-color: #0b5c30;
+    }
+    #status {
+      margin-top: 12px;
+      font-size: 12px;
+      min-height: 18px;
+    }
+    .success { color: #107c41; }
+    .error { color: #d83b01; }
+  </style>
+</head>
+<body>
+  <div class="badge">🇮🇩 ID &rarr; 🇬🇧 EN</div>
+  <h2>Penerjemah Indonesia - Inggris</h2>
   
-  if (data && data.responseData && data.responseData.translatedText) {
-    return data.responseData.translatedText;
-  }
-  throw new Error("Gagal mengambil data terjemahan.");
-}
+  <div class="form-group">
+    <label>Simpan Hasil Terjemahan:</label>
+    <div class="radio-group">
+      <label class="radio-option">
+        <input type="radio" name="position" value="beside" checked>
+        Di Sel Samping (Kolom Sebelah Kanan)
+      </label>
+      <label class="radio-option">
+        <input type="radio" name="position" value="below">
+        Di Sel Bawah (Baris Sebelah Bawah)
+      </label>
+    </div>
+  </div>
 
-async function handleTranslate() {
-  const statusDiv = document.getElementById("status");
-  statusDiv.className = "";
-  statusDiv.innerText = "Menerjemahkan ke bahasa Inggris...";
+  <button id="translateBtn">Terjemahkan ke Inggris</button>
+  
+  <div id="status"></div>
 
-  const position = document.querySelector('input[name="position"]:checked').value;
-
-  try {
-    await Excel.run(async (context) => {
-      const range = context.workbook.getSelectedRange();
-      range.load("values");
-      await context.sync();
-
-      const originalValues = range.values;
-      const updatedValues = [];
-
-      for (let row = 0; row < originalValues.length; row++) {
-        const rowValues = [];
-        for (let col = 0; col < originalValues[row].length; col++) {
-          const originalText = originalValues[row][col];
-
-          if (typeof originalText === "string" && originalText.trim() !== "") {
-            const rawTranslation = await fetchTranslation(originalText.trim());
-            
-            // 1. Ubah teks terjemahan menjadi miring
-            const italicText = toUnicodeItalic(rawTranslation.trim());
-            
-            // 2. Kunci posisi tanda kurung dengan LTR Mark
-            const formattedTranslation = wrapWithSafeParentheses(italicText);
-
-            let combinedResult = "";
-            if (position === "newline") {
-              combinedResult = `${originalText.trim()}\n${formattedTranslation}`;
-            } else {
-              combinedResult = `${originalText.trim()} ${formattedTranslation}`;
-            }
-
-            rowValues.push(combinedResult);
-          } else {
-            rowValues.push(originalText);
-          }
-        }
-        updatedValues.push(rowValues);
-      }
-
-      // Tulis kembali seluruh data ke sel yang dipilih
-      range.values = updatedValues;
-      
-      // Pastikan Text Wrap aktif jika memilih posisi Di Bawah
-      if (position === "newline") {
-        range.format.wrapText = true;
-      }
-
-      await context.sync();
-      statusDiv.className = "success";
-      statusDiv.innerText = "✓ Selesai diterjemahkan!";
-    });
-  } catch (error) {
-    console.error(error);
-    statusDiv.className = "error";
-    statusDiv.innerText = "Terjadi kendala: " + error.message;
-  }
-}
+  <script src="taskpane.js"></script>
+</body>
+</html>
