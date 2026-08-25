@@ -29,36 +29,16 @@ async function handleTranslate() {
 
   try {
     await Excel.run(async (context) => {
-      const sheet = context.workbook.worksheets.getActiveWorksheet();
-      const shapes = sheet.shapes;
-      shapes.load("items");
-      await context.sync();
-
-      let translatedCount = 0;
-      let shapeFound = false;
-
-      // 1. Cek apakah ada Shape aktif yang sedang dipilih atau berisi teks
-      for (let i = 0; i < shapes.items.length; i++) {
-        const shape = shapes.items[i];
-        const textFrame = shape.textFrame;
-        textFrame.load(["hasText", "textRange"]);
-      }
-      
-      try {
-        await context.sync();
-      } catch (e) {
-        // Abaikan jika worksheet tidak mengizinkan akses massal shape
-      }
-
-      // 2. Prioritaskan penerjemahan Sel Terpilih (Selected Range)
+      // 1. Ambil sel yang dipilih
       const selectedRange = context.workbook.getSelectedRange();
       selectedRange.load(["values", "rowCount", "columnCount"]);
       await context.sync();
 
       const originalValues = selectedRange.values;
       const updatedValues = [];
-      let cellCount = 0;
+      let count = 0;
 
+      // 2. Gabungkan teks asli dan hasil terjemahan murni (plain text)
       for (let r = 0; r < selectedRange.rowCount; r++) {
         const rowData = [];
         for (let c = 0; c < selectedRange.columnCount; c++) {
@@ -71,13 +51,15 @@ async function handleTranslate() {
 
             let finalResult = "";
             if (position === "newline") {
+              // Baris baru di bawah teks asli
               finalResult = `${textToTranslate}\n${cleanTranslation}`;
             } else {
+              // Di samping teks asli
               finalResult = `${textToTranslate} ${cleanTranslation}`;
             }
 
             rowData.push(finalResult);
-            cellCount++;
+            count++;
           } else {
             rowData.push(originalCell);
           }
@@ -85,53 +67,23 @@ async function handleTranslate() {
         updatedValues.push(rowData);
       }
 
-      // Jika ada teks di sel, simpan hasil ke sel
-      if (cellCount > 0) {
-        selectedRange.values = updatedValues;
-        if (position === "newline") {
-          selectedRange.format.wrapText = true;
-        }
-        translatedCount += cellCount;
-      }
-
-      // 3. Terjemahkan teks pada Shape di lembar kerja aktif
-      for (let i = 0; i < shapes.items.length; i++) {
-        const shape = shapes.items[i];
-        if (shape.textFrame && shape.textFrame.hasText) {
-          const textRange = shape.textFrame.textRange;
-          textRange.load("text");
-          await context.sync();
-
-          const shapeText = textRange.text;
-          if (shapeText && shapeText.trim() !== "") {
-            const cleanShapeText = shapeText.trim();
-            const translatedShape = await fetchTranslation(cleanShapeText);
-            const cleanTransResult = translatedShape.trim();
-
-            let finalShapeResult = "";
-            if (position === "newline") {
-              finalShapeResult = `${cleanShapeText}\n${cleanTransResult}`;
-            } else {
-              finalShapeResult = `${cleanShapeText} ${cleanTransResult}`;
-            }
-
-            textRange.text = finalShapeResult;
-            translatedCount++;
-            shapeFound = true;
-          }
-        }
-      }
-
-      await context.sync();
-
-      if (translatedCount === 0) {
+      if (count === 0) {
         statusDiv.className = "error";
-        statusDiv.innerText = "Tidak ditemukan teks pada sel atau shape terpilih!";
+        statusDiv.innerText = "Pilih sel yang berisi teks terlebih dahulu!";
         return;
       }
 
+      // 3. Masukkan teks ke sel (format sel asli tetap dipertahankan)
+      selectedRange.values = updatedValues;
+
+      // Aktifkan Wrap Text otomatis jika memilih opsi baris baru (Di Bawah)
+      if (position === "newline") {
+        selectedRange.format.wrapText = true;
+      }
+
+      await context.sync();
       statusDiv.className = "success";
-      statusDiv.innerText = `✓ Berhasil memperbarui ${translatedCount} elemen (sel/shape)!`;
+      statusDiv.innerText = `✓ Berhasil memperbarui ${count} sel!`;
     });
   } catch (error) {
     console.error(error);
