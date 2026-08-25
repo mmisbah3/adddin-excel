@@ -4,7 +4,7 @@ Office.onReady((info) => {
   }
 });
 
-// Fungsi konversi alfabet ke format Italic Unicode
+// Konversi alfabet ke format Italic Unicode
 function toUnicodeItalic(text) {
   return text.split('').map(char => {
     const code = char.charCodeAt(0);
@@ -46,7 +46,7 @@ async function handleTranslate() {
 
   try {
     await Excel.run(async (context) => {
-      // 1. Ambil sel yang sedang dipilih pengguna
+      // 1. Ambil sel yang dipilih pengguna
       const selectedRange = context.workbook.getSelectedRange();
       selectedRange.load(["values", "rowCount", "columnCount"]);
       await context.sync();
@@ -55,7 +55,7 @@ async function handleTranslate() {
       const updatedValues = [];
       let count = 0;
 
-      // 2. Proses terjemahan langsung di sel yang sama
+      // 2. Proses penggabungan teks langsung di sel yang sama tanpa tanda kurung
       for (let r = 0; r < selectedRange.rowCount; r++) {
         const rowData = [];
         for (let c = 0; c < selectedRange.columnCount; c++) {
@@ -65,19 +65,16 @@ async function handleTranslate() {
             const textToTranslate = String(originalCell).trim();
             const translatedRaw = await fetchTranslation(textToTranslate);
 
-            // Miringkan teks terjemahan
+            // Miringkan teks terjemahan tanpa tanda kurung
             const italicText = toUnicodeItalic(translatedRaw.trim());
-            
-            // Bungkus kurung menggunakan LTR Mark (\u200E) agar tanda kurung tidak rusak saat berpindah sel
-            const safeBracketed = `\u200E(\u200E${italicText}\u200E)\u200E`;
 
             let finalResult = "";
             if (position === "newline") {
-              // Simpan di bawah teks asli dalam 1 sel yang sama
-              finalResult = `${textToTranslate}\n${safeBracketed}`;
+              // Di bawah teks asli (baris baru)
+              finalResult = `${textToTranslate}\n${italicText}`;
             } else {
-              // Simpan di samping teks asli dalam 1 sel yang sama
-              finalResult = `${textToTranslate} ${safeBracketed}`;
+              // Di samping teks asli
+              finalResult = `${textToTranslate} ${italicText}`;
             }
 
             rowData.push(finalResult);
@@ -95,7 +92,7 @@ async function handleTranslate() {
         return;
       }
 
-      // 3. Tulis hasil langsung menimpa ke sel yang sama
+      // 3. Masukkan hasil ke sel
       selectedRange.values = updatedValues;
 
       // Aktifkan Wrap Text otomatis jika memilih opsi baris baru (Di Bawah)
