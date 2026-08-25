@@ -4,23 +4,6 @@ Office.onReady((info) => {
   }
 });
 
-// Konversi alfabet ke format Italic Unicode
-function toUnicodeItalic(text) {
-  return text.split('').map(char => {
-    const code = char.charCodeAt(0);
-    // Huruf besar A-Z (A=0x1D434)
-    if (code >= 65 && code <= 90) {
-      return String.fromCodePoint(0x1D434 + (code - 65));
-    }
-    // Huruf kecil a-z (a=0x1D44E)
-    if (code >= 97 && code <= 122) {
-      if (char === 'h') return 'ℎ';
-      return String.fromCodePoint(0x1D44E + (code - 97));
-    }
-    return char;
-  }).join('');
-}
-
 // Request API Google Translate (ID -> EN)
 async function fetchTranslation(text) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=id&tl=en&dt=t&q=${encodeURIComponent(text)}`;
@@ -46,7 +29,7 @@ async function handleTranslate() {
 
   try {
     await Excel.run(async (context) => {
-      // 1. Ambil sel yang dipilih pengguna
+      // 1. Ambil sel yang dipilih
       const selectedRange = context.workbook.getSelectedRange();
       selectedRange.load(["values", "rowCount", "columnCount"]);
       await context.sync();
@@ -55,7 +38,7 @@ async function handleTranslate() {
       const updatedValues = [];
       let count = 0;
 
-      // 2. Proses penggabungan teks langsung di sel yang sama tanpa tanda kurung
+      // 2. Gabungkan teks asli dan hasil terjemahan murni (plain text)
       for (let r = 0; r < selectedRange.rowCount; r++) {
         const rowData = [];
         for (let c = 0; c < selectedRange.columnCount; c++) {
@@ -64,17 +47,15 @@ async function handleTranslate() {
           if (originalCell !== null && originalCell !== undefined && String(originalCell).trim() !== "") {
             const textToTranslate = String(originalCell).trim();
             const translatedRaw = await fetchTranslation(textToTranslate);
-
-            // Miringkan teks terjemahan tanpa tanda kurung
-            const italicText = toUnicodeItalic(translatedRaw.trim());
+            const cleanTranslation = translatedRaw.trim();
 
             let finalResult = "";
             if (position === "newline") {
-              // Di bawah teks asli (baris baru)
-              finalResult = `${textToTranslate}\n${italicText}`;
+              // Baris baru di bawah teks asli
+              finalResult = `${textToTranslate}\n${cleanTranslation}`;
             } else {
               // Di samping teks asli
-              finalResult = `${textToTranslate} ${italicText}`;
+              finalResult = `${textToTranslate} ${cleanTranslation}`;
             }
 
             rowData.push(finalResult);
@@ -92,7 +73,7 @@ async function handleTranslate() {
         return;
       }
 
-      // 3. Masukkan hasil ke sel
+      // 3. Masukkan teks ke sel (format sel asli tetap dipertahankan)
       selectedRange.values = updatedValues;
 
       // Aktifkan Wrap Text otomatis jika memilih opsi baris baru (Di Bawah)
