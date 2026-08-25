@@ -4,25 +4,31 @@ Office.onReady((info) => {
   }
 });
 
-// Konversi HANYA teks alfabet ke karakter miring Unicode
+// Konversi karakter alfabet ke format italic Unicode
 function toUnicodeItalic(text) {
   return text.split('').map(char => {
     const code = char.charCodeAt(0);
-    // Huruf besar A-Z (A=0x1D434)
+    // Huruf besar A-Z
     if (code >= 65 && code <= 90) {
       return String.fromCodePoint(0x1D434 + (code - 65));
     }
-    // Huruf kecil a-z (a=0x1D44E)
+    // Huruf kecil a-z
     if (code >= 97 && code <= 122) {
-      if (char === 'h') return 'ℎ'; // Pengecualian standar Unicode
+      if (char === 'h') return 'ℎ'; // Karakter planck/italic h standar
       return String.fromCodePoint(0x1D44E + (code - 97));
     }
-    // Angka, spasi, dan simbol tetap standar
     return char;
   }).join('');
 }
 
-// Fetch terjemahan ID -> EN
+// Membungkus teks italic dengan tanda kurung yang dilindungi LTR Mark (\u200E)
+// Mencegah Excel mengubah arah perataan dan posisi tanda kurung saat berpindah sel
+function wrapWithSafeParentheses(text) {
+  const LTR = "\u200E"; // Left-to-Right Directional Mark
+  return `${LTR}(${text})${LTR}`;
+}
+
+// Request terjemahan langsung spesifik ID ke EN
 async function fetchTranslation(text) {
   const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=id|en`;
   const response = await fetch(url);
@@ -37,7 +43,7 @@ async function fetchTranslation(text) {
 async function handleTranslate() {
   const statusDiv = document.getElementById("status");
   statusDiv.className = "";
-  statusDiv.innerText = "Menerjemahkan...";
+  statusDiv.innerText = "Menerjemahkan ke bahasa Inggris...";
 
   const position = document.querySelector('input[name="position"]:checked').value;
 
@@ -58,19 +64,17 @@ async function handleTranslate() {
           if (typeof originalText === "string" && originalText.trim() !== "") {
             const rawTranslation = await fetchTranslation(originalText.trim());
             
-            // 1. Miringkan hanya isi teks terjemahannya saja
+            // 1. Ubah teks terjemahan menjadi miring
             const italicText = toUnicodeItalic(rawTranslation.trim());
             
-            // 2. Bungkus teks miring secara eksplisit dengan tanda kurung
-            const bracketedTranslation = `(${italicText})`;
+            // 2. Kunci posisi tanda kurung dengan LTR Mark
+            const formattedTranslation = wrapWithSafeParentheses(italicText);
 
             let combinedResult = "";
             if (position === "newline") {
-              // Posisi Di Bawah (menggunakan line break \n)
-              combinedResult = `${originalText.trim()}\n${bracketedTranslation}`;
+              combinedResult = `${originalText.trim()}\n${formattedTranslation}`;
             } else {
-              // Posisi Di Samping
-              combinedResult = `${originalText.trim()} ${bracketedTranslation}`;
+              combinedResult = `${originalText.trim()} ${formattedTranslation}`;
             }
 
             rowValues.push(combinedResult);
@@ -81,10 +85,10 @@ async function handleTranslate() {
         updatedValues.push(rowValues);
       }
 
-      // Tulis hasil kembali ke sel
+      // Tulis kembali seluruh data ke sel yang dipilih
       range.values = updatedValues;
       
-      // Aktifkan text wrap otomatis jika memilih posisi Di Bawah
+      // Pastikan Text Wrap aktif jika memilih posisi Di Bawah
       if (position === "newline") {
         range.format.wrapText = true;
       }
