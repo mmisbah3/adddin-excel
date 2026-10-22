@@ -4,7 +4,7 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
   xsi:type="TaskPaneApp">
 
-  <Id>d3b07384-d113-4b69-839e-9b2d86f7b1e4</Id>
+  <Id>40234de7-2f68-441d-b9e3-a307f38f8af8</Id>
   <Version>1.0.0.0</Version>
   <ProviderName>Penerjemah Excel</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
