@@ -1,93 +1,123 @@
-Office.onReady((info) => {
+Office.onReady(function (info) {
   if (info.host === Office.HostType.Excel) {
     document.getElementById("translateBtn").onclick = handleTranslate;
   }
 });
 
-// Request API Google Translate (ID -> EN)
-async function fetchTranslation(text) {
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=id&tl=en&dt=t&q=${encodeURIComponent(text)}`;
+// Fungsi pemanggilan HTTP API ramah IE11 / Excel 2016 (XMLHttpRequest)
+function fetchTranslation(text, callback) {
+  var url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=id&tl=en&dt=t&q=" + encodeURIComponent(text);
+  var xhr = new XMLHttpRequest();
   
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`API Gagal (Status: ${response.status})`);
-  }
-  
-  const data = await response.json();
-  if (data && data[0]) {
-    return data[0].map(item => item[0]).join('');
-  }
-  throw new Error("Gagal memproses hasil terjemahan.");
+  xhr.open("GET", url, true);
+  xhr.onreadystatechange = function () {
+    if (xhr.readyState === 4) {
+      if (xhr.status === 200) {
+        try {
+          var data = JSON.parse(xhr.responseText);
+          if (data && data[0]) {
+            var translatedText = "";
+            for (var i = 0; i < data[0].length; i++) {
+              if (data[0][i][0]) {
+                translatedText += data[0][i][0];
+              }
+            }
+            callback(null, translatedText);
+          } else {
+            callback("Gagal membaca hasil terjemahan.", null);
+          }
+        } catch (e) {
+          callback("Format respon tidak valid.", null);
+        }
+      } else {
+        callback("Gagal terhubung ke API (Status: " + xhr.status + ")", null);
+      }
+    }
+  };
+  xhr.send();
 }
 
-async function handleTranslate() {
-  const statusDiv = document.getElementById("status");
+function handleTranslate() {
+  var statusDiv = document.getElementById("status");
   statusDiv.className = "";
   statusDiv.innerText = "⏳ Sedang menerjemahkan...";
 
-  const position = document.querySelector('input[name="position"]:checked').value;
+  var radios = document.getElementsByName("position");
+  var position = "inline";
+  for (var i = 0; i < radios.length; i++) {
+    if (radios[i].checked) {
+      position = radios[i].value;
+      break;
+    }
+  }
 
-  try {
-    await Excel.run(async (context) => {
-      // 1. Ambil sel yang dipilih
-      const selectedRange = context.workbook.getSelectedRange();
-      selectedRange.load(["values", "rowCount", "columnCount"]);
-      await context.sync();
+  Excel.run(function (context) {
+    var selectedRange = context.workbook.getSelectedRange();
+    selectedRange.load(["values", "rowCount", "columnCount"]);
 
-      const originalValues = selectedRange.values;
-      const updatedValues = [];
-      let count = 0;
+    return context.sync().then(function () {
+      var originalValues = selectedRange.values;
+      var promises = [];
+      var cellsToUpdate = [];
 
-      // 2. Gabungkan teks asli dan hasil terjemahan murni (plain text)
-      for (let r = 0; r < selectedRange.rowCount; r++) {
-        const rowData = [];
-        for (let c = 0; c < selectedRange.columnCount; c++) {
-          const originalCell = originalValues[r][c];
-
-          if (originalCell !== null && originalCell !== undefined && String(originalCell).trim() !== "") {
-            const textToTranslate = String(originalCell).trim();
-            const translatedRaw = await fetchTranslation(textToTranslate);
-            const cleanTranslation = translatedRaw.trim();
-
-            let finalResult = "";
-            if (position === "newline") {
-              // Baris baru di bawah teks asli
-              finalResult = `${textToTranslate}\n${cleanTranslation}`;
-            } else {
-              // Di samping teks asli
-              finalResult = `${textToTranslate} ${cleanTranslation}`;
-            }
-
-            rowData.push(finalResult);
-            count++;
-          } else {
-            rowData.push(originalCell);
+      // Kumpulkan semua sel yang berisi teks
+      for (var r = 0; r < selectedRange.rowCount; r++) {
+        for (var c = 0; c < selectedRange.columnCount; c++) {
+          var cellVal = originalValues[r][c];
+          if (cellVal !== null && cellVal !== undefined && String(cellVal).replace(/^\s+|\s+$/g, '') !== "") {
+            cellsToUpdate.push({
+              row: r,
+              col: c,
+              text: String(cellVal).replace(/^\s+|\s+$/g, '')
+            });
           }
         }
-        updatedValues.push(rowData);
       }
 
-      if (count === 0) {
+      if (cellsToUpdate.length === 0) {
         statusDiv.className = "error";
         statusDiv.innerText = "Pilih sel yang berisi teks terlebih dahulu!";
         return;
       }
 
-      // 3. Masukkan teks ke sel (format sel asli tetap dipertahankan)
-      selectedRange.values = updatedValues;
+      // Proses terjemahan secara berurutan
+      var updatedValues = JSON.parse(JSON.stringify(originalValues));
+      var completed = 0;
 
-      // Aktifkan Wrap Text otomatis jika memilih opsi baris baru (Di Bawah)
-      if (position === "newline") {
-        selectedRange.format.wrapText = true;
+      function processNext(index) {
+        if (index >= cellsToUpdate.length) {
+          // Setelah semua sel selesai diterjemahkan, tulis kembali ke sel
+          selectedRange.values = updatedValues;
+          if (position === "newline") {
+            selectedRange.format.wrapText = true;
+          }
+
+          return context.sync().then(function () {
+            statusDiv.className = "success";
+            statusDiv.innerText = "✓ Berhasil memperbarui " + completed + " sel!";
+          });
+        }
+
+        var item = cellsToUpdate[index];
+        fetchTranslation(item.text, function (err, translated) {
+          if (!err && translated) {
+            var cleanTrans = translated.replace(/^\s+|\s+$/g, '');
+            if (position === "newline") {
+              updatedValues[item.row][item.col] = item.text + "\n" + cleanTrans;
+            } else {
+              updatedValues[item.row][item.col] = item.text + " " + cleanTrans;
+            }
+            completed++;
+          }
+          processNext(index + 1);
+        });
       }
 
-      await context.sync();
-      statusDiv.className = "success";
-      statusDiv.innerText = `✓ Berhasil memperbarui ${count} sel!`;
+      processNext(0);
     });
-  } catch (error) {
-    console.error(error);
+  }).catch(function (error) {
+    console.log(error);
     statusDiv.className = "error";
     statusDiv.innerText = "Gagal: " + (error.message || error);
-  }
+  });
 }
